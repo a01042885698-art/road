@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>고속도로 휴게소 & 주유소 지도</title>
+  
+  <!-- 카카오맵 API 스크립트 (services 라이브러리 포함) -->
+  <!-- YOUR_KAKAO_JAVASCRIPT_KEY 부분에 카카오 디벨로퍼스에서 발급받은 JavaScript 키를 입력하세요. -->
+  <script type="text/javascript" src="//dapi.kakao.com/v2/maps/sdk.js?appkey=YOUR_KAKAO_JAVASCRIPT_KEY&libraries=services"></script>
+
+  <style>
+    /* 기본 리셋 및 전체 레이아웃 설정 */
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      display: flex;
+      height: 100vh;
+      overflow: hidden;
+      color: #333;
+    }
+
+    /* 왼쪽 사이드바 스타일링 */
+    #sidebar {
+      width: 360px;
+      height: 100%;
+      background-color: #ffffff;
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid #e2e8f0;
+      z-index: 10;
+      box-shadow: 2px 0 10px rgba(0, 0, 0, 0.05);
+    }
+
+    .sidebar-header {
+      padding: 20px;
+      background-color: #1e293b;
+      color: #ffffff;
+    }
+
+    .sidebar-header h1 {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    .sidebar-header p {
+      font-size: 12px;
+      color: #94a3b8;
+    }
+
+    /* 탭 버튼 스타일 */
+    .tab-container {
+      display: flex;
+      background-color: #f1f5f9;
+      border-bottom: 1px solid #e2e8f0;
+    }
+
+    .tab-button {
+      flex: 1;
+      padding: 14px 10px;
+      border: none;
+      background: none;
+      font-size: 14px;
+      font-weight: 600;
+      color: #64748b;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .tab-button.active {
+      color: #2563eb;
+      background-color: #ffffff;
+      border-bottom: 3px solid #2563eb;
+    }
+
+    /* 장소 리스트 영역 */
+    #places-list {
+      flex: 1;
+      overflow-y: auto;
+      list-style: none;
+      padding: 12px;
+    }
+
+    .place-item {
+      padding: 14px;
+      border-radius: 8px;
+      border: 1px solid #f1f5f9;
+      background-color: #ffffff;
+      margin-bottom: 10px;
+      cursor: pointer;
+      transition: background-color 0.2s ease, transform 0.1s ease;
+    }
+
+    .place-item:hover {
+      background-color: #f8fafc;
+      transform: translateY(-2px);
+    }
+
+    .place-name {
+      font-size: 15px;
+      font-weight: 700;
+      color: #0f172a;
+      margin-bottom: 4px;
+    }
+
+    .place-address {
+      font-size: 13px;
+      color: #64748b;
+      line-height: 1.4;
+    }
+
+    .place-phone {
+      font-size: 12px;
+      color: #16a34a;
+      margin-top: 4px;
+    }
+
+    .no-result {
+      padding: 30px;
+      text-align: center;
+      color: #94a3b8;
+      font-size: 14px;
+    }
+
+    /* 지도 영역 */
+    #map-container {
+      flex: 1;
+      position: relative;
+      height: 100%;
+    }
+
+    #map {
+      width: 100%;
+      height: 100%;
+    }
+
+    /* 지도 상단 오버레이 컨트롤 버튼 (교통정보, 로드뷰) */
+    .map-controls {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      z-index: 5;
+      display: flex;
+      gap: 8px;
+    }
+
+    .control-button {
+      padding: 10px 14px;
+      background-color: #ffffff;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      color: #334155;
+      cursor: pointer;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+      transition: all 0.2s ease;
+    }
+
+    .control-button.active {
+      background-color: #2563eb;
+      color: #ffffff;
+      border-color: #2563eb;
+    }
+
+    /* 인포윈도우(팝업) 스타일 */
+    .infowindow-content {
+      padding: 10px 14px;
+      font-size: 13px;
+      color: #1e293b;
+      max-width: 220px;
+    }
+
+    .infowindow-title {
+      font-weight: bold;
+      margin-bottom: 4px;
+      color: #0f172a;
+    }
+
+    /* 로드뷰 모달 패널 */
+    #roadview-modal {
+      display: none;
+      position: absolute;
+      bottom: 20px;
+      right: 20px;
+      width: 400px;
+      height: 300px;
+      background-color: #ffffff;
+      border-radius: 12px;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+      z-index: 20;
+      overflow: hidden;
+    }
+
+    #roadview {
+      width: 100%;
+      height: 100%;
+    }
+
+    .close-roadview-btn {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      z-index: 21;
+      background-color: rgba(0, 0, 0, 0.6);
+      color: #ffffff;
+      border: none;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      cursor: pointer;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 왼쪽 사이드바 -->
+  <aside id="sidebar">
+    <div class="sidebar-header">
+      <h1>고속도로 휴게소 & 주유소 지도</h1>
+      <p>내 위치 주변 휴게소와 주유소를 빠르게 찾아보세요</p>
+    </div>
+
+    <!-- 탭 버튼 영역 -->
+    <div class="tab-container">
+      <button id="tab-gas-station" class="tab-button active" onclick="switchTab('gas_station')">
+        주유소/충전소
+      </button>
+      <button id="tab-rest-area" class="tab-button" onclick="switchTab('rest_area')">
+        전국 휴게소
+      </button>
+    </div>
+
+    <!-- 장소 목록 출력 리스트 -->
+    <ul id="places-list"></ul>
+  </aside>
+
+  <!-- 오른쪽 지도 영역 -->
+  <main id="map-container">
+    <!-- 기능 버튼 (교통정보, 로드뷰) -->
+    <div class="map-controls">
+      <button id="btn-traffic" class="control-button" onclick="toggleTraffic()">
+        🚦 교통정보
+      </button>
+      <button id="btn-roadview" class="control-button" onclick="toggleRoadviewMode()">
+        📷 로드뷰 보기
+      </button>
+    </div>
+
+    <!-- 카카오 지도 객체 -->
+    <div id="map"></div>
+
+    <!-- 로드뷰 팝업 창 -->
+    <div id="roadview-modal">
+      <button class="close-roadview-btn" onclick="closeRoadview()">✕</button>
+      <div id="roadview"></div>
+    </div>
+  </main>
+
+  <script>
+    // 전역 변수 선언
+    let map; // 지도 객체
+    let placesService; // 장소 검색 서비스 객체
+    let infoWindow; // 마커 클릭 시 팝업창
+    let activeMarkers = []; // 현재 표시 중인 마커 배열
+    let currentTab = 'gas_station'; // 현재 활성화된 탭
+    
+    // 상태 제어 변수
+    let isTrafficActive = false; // 교통정보 오버레이 활성화 여부
+    let isRoadviewActive = false; // 로드뷰 클릭 모드 활성화 여부
+    
+    let roadviewObject; // 로드뷰 객체
+    let roadviewClient; // 로드뷰 서비스 객체
+
+    // 페이지 로드 완료 시 실행
+    window.onload = function() {
+      initializeMap();
+    };
+
+    // 1. 지도 초기화 및 사용자 위치 탐색
+    function initializeMap() {
+      const mapContainer = document.getElementById('map');
+      
+      // 기본 중심 좌표 (서울시청 기준 기본값)
+      const defaultCenter = new kakao.maps.LatLng(37.566826, 126.9786567);
+      
+      const mapOptions = {
+        center: defaultCenter,
+        level: 6 // 지도 확대 레벨
+      };
+
+      // 지도 객체 생성
+      map = new kakao.maps.Map(mapContainer, mapOptions);
+
+      // 장소 검색 서비스 및 인포윈도우 객체 생성
+      placesService = new kakao.maps.services.Places();
+      infoWindow = new kakao.maps.InfoWindow({ zIndex: 1 });
+
+      // 로드뷰 객체 초기화
+      const roadviewContainer = document.getElementById('roadview');
+      roadviewObject = new kakao.maps.Roadview(roadviewContainer);
+      roadviewClient = new kakao.maps.RoadviewClient();
+
+      // 지도 클릭 이벤트 등록 (로드뷰 모드 지원)
+      kakao.maps.event.addListener(map, 'click', handleMapClick);
+
+      // 사용자 현재 위치 확인 (Geolocation API)
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          function(position) {
+            const userLatitude = position.coords.latitude;
+            const userLongitude = position.coords.longitude;
+            const userLocation = new kakao.maps.LatLng(userLatitude, userLongitude);
+
+            // 지도 중심을 사용자 현재 위치로 이동
+            map.setCenter(userLocation);
+
+            // 현재 위치 검색 수행
+            fetchPlaces();
+          },
+          function(error) {
+            console.warn('사용자 위치 정보를 가져올 수 없습니다. 기본 위치를 사용합니다.', error);
+            fetchPlaces();
+          }
+        );
+      } else {
+        fetchPlaces();
+      }
+    }
+
+    // 2. 탭 변경 처리 함수
+    function switchTab(selectedTab) {
+      if (currentTab === selectedTab) return;
+
+      currentTab = selectedTab;
+
+      // 탭 버튼 스타일 업데이트
+      document.getElementById('tab-gas-station').classList.toggle('active', selectedTab === 'gas_station');
+      document.getElementById('tab-rest-area').classList.toggle('active', selectedTab === 'rest_area');
+
+      // 기존 검색 결과 삭제 및 새로 검색
+      clearResults();
+      fetchPlaces();
+    }
+
+    // 3. 현재 활성화된 탭에 맞춰 데이터 검색
+    function fetchPlaces() {
+      const currentMapCenter = map.getCenter();
+
+      if (currentTab === 'gas_station') {
+        // [탭 1] 카테고리 코드 OL7 (주유소, 충전소) 기반 검색
+        placesService.categorySearch('OL7', placesSearchCallback, {
+          location: currentMapCenter,
+          radius: 10000 // 중심 좌표 주변 10km 검색
+        });
+      } else if (currentTab === 'rest_area') {
+        // [탭 2] '전국 휴게소' 키워드 기반 검색
+        placesService.keywordSearch('전국 휴게소', placesSearchCallback, {
+          location: currentMapCenter,
+          radius: 20000 // 중심 좌표 주변 20km 검색
+        });
+      }
+    }
+
+    // 4. 장소 검색 완료 시 콜백 함수
+    function placesSearchCallback(data, status) {
+      clearResults();
+
+      const listContainer = document.getElementById('places-list');
+
+      if (status === kakao.maps.services.Status.OK) {
+        // 검색된 장소 마커 및 리스트 표시
+        for (let i = 0; i < data.length; i++) {
+          const placeItem = data[i];
+          const markerPosition = new kakao.maps.LatLng(placeItem.y, placeItem.x);
+
+          // 지도 마커 생성
+          const marker = createMarker(markerPosition, placeItem);
+          activeMarkers.push(marker);
+
+          // 왼쪽 사이드바 리스트 아이템 생성
+          const listItem = createListItem(placeItem, marker);
+          listContainer.appendChild(listItem);
+        }
+      } else {
+        // 검색 결과가 없을 경우
+        listContainer.innerHTML = '<div class="no-result">주변에 검색 결과가 없습니다.</div>';
+      }
+    }
+
+    // 5. 마커 생성 및 이벤트 등록
+    function createMarker(position, placeData) {
+      const marker = new kakao.maps.Marker({
+        position: position,
+        map: map
+      });
+
+      // 마커 클릭 시 팝업 및 로드뷰 노출
+      kakao.maps.event.addListener(marker, 'click', function() {
+        displayInfoWindow(marker, placeData);
+        map.panTo(position);
+
+        // 로드뷰 모드 활성화 상태라면 로드뷰도 함께 표시
+        if (isRoadviewActive) {
+          openRoadview(position);
+        }
+      });
+
+      return marker;
+    }
+
+    // 6. 리스트 아이템 생성
+    function createListItem(placeData, marker) {
+      const li = document.createElement('li');
+      li.className = 'place-item';
+
+      const addressText = placeData.road_address_name || placeData.address_name;
+      const phoneText =
